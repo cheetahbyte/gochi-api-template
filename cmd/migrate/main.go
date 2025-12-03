@@ -2,16 +2,13 @@ package main
 
 import (
 	"database/sql"
-	"embed"
 	"log"
 	"os"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // Import pgx driver for database/sql
 	"github.com/pressly/goose/v3"
+	schema "github.com/username/module/sql"
 )
-
-//go:embed ../../sql/schema/*.sql
-var embedMigrations embed.FS
 
 func main() {
 	dbString := os.Getenv("DATABASE_URL")
@@ -26,14 +23,14 @@ func main() {
 	defer db.Close()
 
 	// Setup Goose to use the embedded files
-	goose.SetBaseFS(embedMigrations)
+	goose.SetBaseFS(schema.FS)
 
 	if err := goose.SetDialect("postgres"); err != nil {
 		log.Fatal(err)
 	}
 
 	// Run migrations
-	if err := goose.Up(db, "sql/schema"); err != nil {
+	if err := goose.Up(db, "schema"); err != nil {
 		log.Fatalf("Migration failed: %v", err)
 	}
 

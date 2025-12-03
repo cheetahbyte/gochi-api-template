@@ -1,3 +1,4 @@
+# --- Load .env file if it exists ---
 ifneq (,$(wildcard .env))
     include .env
     export
@@ -7,15 +8,20 @@ endif
 APP_NAME=myapp
 BUILD_DIR=bin
 MAIN_FILE=cmd/api/main.go
+MIGRATE_FILE=cmd/migrate/main.go
 
-DATABASE_URL?=postgres://user:password@host:port/dbname?sslmode=disable
+# Output binary names
+API_BINARY=$(BUILD_DIR)/api
+MIGRATE_BINARY=$(BUILD_DIR)/migrate
+
+DATABASE_URL?=postgres://postgres:password@localhost:5432/flagly?sslmode=disable
 MIGRATION_DIR=sql/schema
 
-# Colors for terminal output
+# Colors
 GREEN=\033[0;32m
 NC=\033[0m # No Color
 
-.PHONY: all build run test clean docker-build docker-run deps help sqlc migrate-up migrate-down migrate-create migrate-status
+.PHONY: all build run test clean docker-build docker-run deps help sqlc migrate-up migrate-down migrate-create migrate-status run-migrate
 
 all: build
 
@@ -25,13 +31,19 @@ help: ## Show this help message
 
 # --- Application ---
 
-run: ## Run the application locally (without Docker)
+run: ## Run the API locally
 	@echo "${GREEN}Running application...${NC}"
-	DATABASE_URL=$(DATABASE_URL) go run $(MAIN_FILE)
+	go run $(MAIN_FILE)
 
-build: ## Build the binary
-	@echo "${GREEN}Building binary...${NC}"
-	go build -o $(BUILD_DIR)/api $(MAIN_FILE)
+build: ## Build BOTH binaries (API + Migrator)
+	@echo "${GREEN}Building API binary...${NC}"
+	go build -o $(API_BINARY) $(MAIN_FILE)
+	@echo "${GREEN}Building Migrator binary...${NC}"
+	go build -o $(MIGRATE_BINARY) $(MIGRATE_FILE)
+
+run-migrate: build ## Run the compiled migration binary locally
+	@echo "${GREEN}Running migration binary...${NC}"
+	$(MIGRATE_BINARY)
 
 test: ## Run unit tests
 	@echo "${GREEN}Running tests...${NC}"
@@ -62,21 +74,22 @@ sqlc: ## Generate Go code from SQL queries
 	@echo "${GREEN}Generating SQLC code...${NC}"
 	sqlc generate
 
-# --- Database Migrations (Goose) ---
+# --- Database Migrations (Development Tools) ---
+# These commands use the 'goose' CLI tool for quick local development
 
-migrate-up: ## Run all new database migrations
-	@echo "${GREEN}Running migrations UP...${NC}"
+migrate-up: ## Run migrations UP (using goose CLI)
+	@echo "${GREEN}Running migrations UP (CLI)...${NC}"
 	goose -dir $(MIGRATION_DIR) postgres "$(DATABASE_URL)" up
 
-migrate-down: ## Rollback the last migration
-	@echo "${GREEN}Rolling back migration...${NC}"
+migrate-down: ## Rollback migration (using goose CLI)
+	@echo "${GREEN}Rolling back migration (CLI)...${NC}"
 	goose -dir $(MIGRATION_DIR) postgres "$(DATABASE_URL)" down
 
-migrate-status: ## Check the status of migrations
-	@echo "${GREEN}Checking migration status...${NC}"
+migrate-status: ## Check status (using goose CLI)
+	@echo "${GREEN}Checking migration status (CLI)...${NC}"
 	goose -dir $(MIGRATION_DIR) postgres "$(DATABASE_URL)" status
 
-migrate-create: ## Create a new migration file (Usage: make migrate-create name=add_users)
+migrate-create: ## Create a new migration file
 	@echo "${GREEN}Creating migration file...${NC}"
 	@if [ -z "$(name)" ]; then echo "Error: name argument required (make migrate-create name=foo)"; exit 1; fi
 	goose -dir $(MIGRATION_DIR) create $(name) sql
